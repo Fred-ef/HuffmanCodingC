@@ -11,6 +11,10 @@
 
 typedef unsigned char byte;   // type of data use to represent raw bytes
 
+
+
+/* HEAP-RELATED DATA STRUCTURES */
+
 typedef struct heap_node {   // implementation of a heap sub-tree
   byte data;    // 8 bits of data interpreted as a raw bytes
   unsigned int frequency;   // stores the frequency in which the 8bits appear
@@ -26,23 +30,21 @@ typedef struct heap_tree {    // implementation of a min-heap
 
 
 
+/* HEAP-RELATED FUNCTIONS */
+
 hnode* create_node(byte, int);
 heap* create_heap(int);
-
 void min_heapify(heap*, int);
-hnode* get_min(heap*);
 void insert_node(heap*, hnode*);
 void build_min_heap(heap*);
-int is_leaf(hnode*);
 heap* create_build_min_heap(byte*, int);
-hnode* build_huff_tree(byte*, int);
 
-static byte* process_data(byte*, int);
-static byte get_size(byte*);
+
+
+/* COMPRESSION-RELATED FUNCTIONS */
+
 void compress(byte*, int);
-
-void print_arr(int*, int);
-void print_codes(hnode*, int*, int);
-void alpha_encode(byte*, int*, int);
+hnode* build_huff_tree(byte*, int);
+byte* process_data(byte*, int);
 
 #endif // huffman_h

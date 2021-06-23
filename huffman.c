@@ -1,5 +1,11 @@
 #include "huffman.h"
 
+
+
+/* #################################################################################################### */
+/* ###################################### HEAP RELATED FUNCTIONS ###################################### */
+/* #################################################################################################### */
+
 // creates a heap-node from given arguments, allocating its memory
 hnode* create_node(byte data, int frequency) {
   hnode* node = (hnode*)malloc(sizeof(hnode));    // generating the node
@@ -22,6 +28,30 @@ heap* create_heap(int cap) {
   return h;    // returning the tree built
 }
 
+heap* create_build_min_heap(byte* data, int actual_size) {
+  int i, j;    // for-loop indexes
+  heap* h = create_heap(actual_size);   // creates a min-heap of capacity=cap
+
+  for(i=0, j=0; i<MAX_UCHAR && j<actual_size; i++) {
+    if(data[i]!=0) {    // if the element's frequency is not null...
+      h->arr[j] = create_node(i, data[i]);    // ...creates a node out of it and inserts it in the heap
+      j++;
+    }
+  }
+
+  h->size = actual_size;   // updating the tree's size
+  build_min_heap(h);    // building a min-heap out of the tree
+
+  return h;   // returns the min-heap constructed
+}
+
+void build_min_heap(heap* h) {
+  int i;    // for-loop index
+  int d = h->size-1;
+
+  for(i=(d-1)/2; i>=0; i--) min_heapify(h, i);
+}
+
 void min_heapify(heap* h, int index) {
   int min, left, right;
   left=2*index+1;
@@ -40,14 +70,6 @@ void min_heapify(heap* h, int index) {
   }
 }
 
-hnode* get_min(heap* h) {
-  hnode* temp = h->arr[0];
-  h->arr[0] = h->arr[(h->size--) - 1];
-  min_heapify(h, 0);
-
-  return temp;
-}
-
 void insert_node(heap* h, hnode* node) {
   int i = h->size++;
 
@@ -59,49 +81,34 @@ void insert_node(heap* h, hnode* node) {
   h->arr[i] = node;
 }
 
-void build_min_heap(heap* h) {
-  int i;    // for-loop index
-  int d = h->size-1;
 
-  for(i=(d-1)/2; i>=0; i--) min_heapify(h, i);
-}
 
-void print_arr(int v[], int n) {
-  int i;
-  for(i=0; i<n; i++) {
-    printf("%d", v[i]);
-  }
-  printf("\n");
-}
+/* #################################################################################################### */
+/* ###################################### COMPRESSION FUNCTIONS ####################################### */
+/* #################################################################################################### */
 
-void print_arr_c(byte* v, int size) {
-  int i;
-  for(i=0; i<size; i++) {
-    printf("Posizione %d: %d\n", i, v[i]);
-  }
+void compress(byte* buf, int size) {
+
+  byte* data=process_data(buf, size);    // constructs an array out of buffer values' frequencies
+  byte num_different_elements=get_size(data);   // gets the number of different elements in the array
+  hnode* root=build_huff_tree(data, num_different_elements);    // builds a huffman tree out of the data extracted
+
+  int v[256], m=0;
+  print_codes(root, v, m);
 
   return;
 }
 
-int is_leaf(hnode* n) {
-  return ((n->left==NULL) && (n->right==NULL));
-}
+byte* process_data(byte* buf, int size) {
+  int i;    // for-loop index
+  byte* freq = (byte*)malloc(MAX_UCHAR*sizeof(byte));    // allocates a byte array with a cell for each possible byte value
+  memset(freq, 0, MAX_UCHAR);   // initializing every element of the array to 0
 
-heap* create_build_min_heap(byte* data, int actual_size) {
-  int i, j;    // for-loop indexes
-  heap* h = create_heap(actual_size);   // creates a min-heap of capacity=cap
-
-  for(i=0, j=0; i<MAX_UCHAR && j<actual_size; i++) {
-    if(data[i]!=0) {    // if the element's frequency is not null...
-      h->arr[j] = create_node(i, data[i]);    // ...creates a node out of it and inserts it in the heap
-      j++;
-    }
+  for(i=0; i<size; i++) {
+    freq[buf[i]]++;
   }
 
-  h->size = actual_size;   // updating the tree's size
-  build_min_heap(h);    // building a min-heap out of the tree
-
-  return h;   // returns the min-heap constructed
+  return freq;    // returns the constructed array, ready to be encoded
 }
 
 hnode* build_huff_tree(byte* data, int actual_size) {
@@ -122,7 +129,53 @@ hnode* build_huff_tree(byte* data, int actual_size) {
   return get_min(h);    // after the loop, the tree is built and the root is the min element
 }
 
-void print_codes(hnode* r, int* v, int m) {
+
+
+/* #################################################################################################### */
+/* ########################################  HELPER FUNCTIONS  ######################################## */
+/* #################################################################################################### */
+
+static hnode* get_min(heap* h) {
+  hnode* temp = h->arr[0];
+  h->arr[0] = h->arr[(h->size--) - 1];
+  min_heapify(h, 0);
+
+  return temp;
+}
+
+static short is_leaf(hnode* n) {
+  return ((n->left==NULL) && (n->right==NULL));
+}
+
+static byte get_size(byte* buf) {
+  int i;    // for-loop index
+  byte size=0;    // holds the number of elements with non-zero frequency
+
+  for(i=0; i<MAX_UCHAR; i++) {
+    if(buf[i]!=0) size++;   // for every element present, increase size by 1
+  }
+
+  return size;    // returns the size of the non-null part of the array
+}
+
+static void print_arr(int v[], int n) {
+  int i;
+  for(i=0; i<n; i++) {
+    printf("%d", v[i]);
+  }
+  printf("\n");
+}
+
+static void print_arr_c(byte* v, int size) {
+  int i;
+  for(i=0; i<size; i++) {
+    printf("%d", v[i]);
+  }
+
+  return;
+}
+
+static void print_codes(hnode* r, int* v, int m) {
   if(r->left) {
     v[m]=0;
     print_codes(r->left, v, m+1);
@@ -138,40 +191,11 @@ void print_codes(hnode* r, int* v, int m) {
   }
 }
 
-static byte get_size(byte* buf) {
-  int i;    // for-loop index
-  byte size=0;    // holds the number of elements with non-zero frequency
 
-  for(i=0; i<MAX_UCHAR; i++) {
-    if(buf[i]!=0) size++;   // for every element present, increase size by 1
-  }
 
-  return size;    // returns the size of the non-null part of the array
-}
-
-byte* process_data(byte* buf, int size) {
-  int i;    // for-loop index
-  byte* freq = (byte*)malloc(MAX_UCHAR*sizeof(byte));    // allocates a byte array with a cell for each possible byte value
-  memset(freq, 0, MAX_UCHAR);   // initializing every element of the array to 0
-
-  for(i=0; i<size; i++) {
-    freq[buf[i]]++;
-  }
-
-  return freq;    // returns the constructed array, ready to be encoded
-}
-
-void compress(byte* buf, int size) {
-
-  byte* data=process_data(buf, size);    // constructs an array out of buffer values' frequencies
-  byte num_different_elements=get_size(data);   // gets the number of different elements in the array
-  hnode* root=build_huff_tree(data, num_different_elements);    // builds a huffman tree out of the data extracted
-
-  int v[256], m=0;
-  print_codes(root, v, m);
-
-  return;
-}
+/* #################################################################################################### */
+/* ############################################ DEBUG MAIN ############################################ */
+/* #################################################################################################### */
 
 int main() {
   byte fl[] = {1, 4, 5, 5, 2, 9, 21, 15, 18, 33, 74, 1, 2, 2, 15, 18, 25, 27, 30, 40};
