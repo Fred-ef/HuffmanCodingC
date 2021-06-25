@@ -3,6 +3,87 @@
 
 
 /* #################################################################################################### */
+/* ########################################  HELPER FUNCTIONS  ######################################## */
+/* #################################################################################################### */
+
+static hnode* get_min(heap* h) {
+  hnode* temp = h->arr[0];
+  h->arr[0] = h->arr[(h->size--) - 1];
+  min_heapify(h, 0);
+
+  return temp;
+}
+
+
+static short is_leaf(hnode* n) {
+  return ((n->left==NULL) && (n->right==NULL));
+}
+
+
+static byte get_size(byte* buf) {
+  int i;    // for-loop index
+  byte size=0;    // holds the number of elements with non-zero frequency
+
+  for(i=0; i<MAX_UCHAR; i++) {
+    if(buf[i]!=0) size++;   // for every element present, increase size by 1
+  }
+
+  return size;    // returns the size of the non-null part of the array
+}
+
+static unsigned int get_compressed_size(abr_node* root) {
+  if(root==NULL) return 0;
+
+  return (get_compressed_size(root->left) + ((root->frequency)*(strlen(root->encoding))) + get_compressed_size(root->right));
+}
+
+
+static void print_arr(int v[], int n) {
+  int i;
+  for(i=0; i<n; i++) {
+    printf("%d", v[i]);
+  }
+  printf("\n");
+}
+
+
+static void print_arr_c(byte* v, int size) {
+  int i;
+  for(i=0; i<size; i++) {
+    printf("%d", v[i]);
+  }
+
+  return;
+}
+
+
+static void print_codes(hnode* r, int* v, int m) {
+  if(r->left) {
+    v[m]=0;
+    print_codes(r->left, v, m+1);
+  }
+  if(r->right) {
+    v[m]=1;
+    print_codes(r->right, v, m+1);
+  }
+
+  if(is_leaf(r)) {
+    printf("%c: ", r->data);
+    print_arr(v, m);
+  }
+}
+
+
+static void htree_search(hnode* r, byte val) {
+  
+
+  return NULL;
+}
+
+
+
+
+/* #################################################################################################### */
 /* ###################################### HEAP RELATED FUNCTIONS ###################################### */
 /* #################################################################################################### */
 
@@ -17,6 +98,7 @@ hnode* create_node(byte data, int frequency) {
   return node;    // returning the node built
 }
 
+
 // creates a heap-tree of a given capacity, allocating its memory
 heap* create_heap(int cap) {
   heap* h = (heap*)malloc(sizeof(heap));   // generating the tree
@@ -27,6 +109,7 @@ heap* create_heap(int cap) {
 
   return h;    // returning the tree built
 }
+
 
 heap* create_build_min_heap(byte* data, int actual_size) {
   int i, j;    // for-loop indexes
@@ -45,12 +128,14 @@ heap* create_build_min_heap(byte* data, int actual_size) {
   return h;   // returns the min-heap constructed
 }
 
+
 void build_min_heap(heap* h) {
   int i;    // for-loop index
   int d = h->size-1;
 
   for(i=(d-1)/2; i>=0; i--) min_heapify(h, i);
 }
+
 
 void min_heapify(heap* h, int index) {
   int min, left, right;
@@ -70,7 +155,8 @@ void min_heapify(heap* h, int index) {
   }
 }
 
-void insert_node(heap* h, hnode* node) {
+
+void heap_insert(heap* h, hnode* node) {
   int i = h->size++;
 
   while(i && node->frequency < h->arr[(i-1)/2]->frequency) {
@@ -79,6 +165,36 @@ void insert_node(heap* h, hnode* node) {
   }
 
   h->arr[i] = node;
+}
+
+
+
+/* #################################################################################################### */
+/* ###################################### ABR RELATED FUNCTIONS ####################################### */
+/* #################################################################################################### */
+
+abr_node* abr_insert(abr_node* root, byte data, unsigned int frequency, char* encoding) {
+  if(root==NULL) {
+    abr_node* newnode=(abr_node*)malloc(sizeof(abr_node));
+    newnode->data=data;
+    newnode->frequency=frequency;
+    newnode->encoding=encoding;
+    newnode->left=newnode->right=NULL;
+    return newnode;
+  }
+
+  if(data<=root->data) root->left=abr_insert(root->left, data, frequency, encoding);
+  else root->right=abr_insert(root->right, data, frequency, encoding);
+  return root;
+}
+
+
+char* abr_search(abr_node* root, byte data) {
+  if(root==NULL) return NULL;
+
+  if(data==root->data) return root->encoding;
+  else if(data<root->data) return (abr_search(root->left, data));
+  else return (abr_search(root->right, data));
 }
 
 
@@ -96,8 +212,46 @@ void compress(byte* buf, int size) {
   int v[256], m=0;
   print_codes(root, v, m);
 
+  encode(buf, size, root);
+
   return;
 }
+
+
+byte* encode(byte* original_data, int size, hnode* tree) {
+  int i;    // for-loop index
+  unsigned int compressed_size;    // will hold the size of the compressed data in bytes
+  byte byte_counter;    // used to count the number of bits encoded
+  byte* compressed_data;   // will hold the compressed version of the data
+  abr_node* abr_root=NULL;
+  char codes[MAX_UCHAR];
+
+  build_encoding_tree(tree, abr_root, codes, 0);
+  compressed_size=get_compressed_size(abr_root);
+  compressed_data=(byte*)malloc(compressed_size*sizeof(byte));
+
+  for(i=0; i<size; i++) {
+
+  }
+}
+
+
+static void build_encoding_tree(hnode* r, abr_node* root, char* v, int acc) {
+  if(r->left) {
+    v[acc]='0';
+    build_encoding_tree(r->left, root, v, acc+1);
+  }
+  if(r->right) {
+    v[acc]='1';
+    build_encoding_tree(r->right, root, v, acc+1);
+  }
+
+  if(is_leaf(r)) {
+    v[acc]='\0';    // inserts the string terminator
+    abr_insert(root, r->data, r->frequency, v);   // puts the data and its encoding in the abr
+  }
+}
+
 
 byte* process_data(byte* buf, int size) {
   int i;    // for-loop index
@@ -111,6 +265,7 @@ byte* process_data(byte* buf, int size) {
   return freq;    // returns the constructed array, ready to be encoded
 }
 
+
 hnode* build_huff_tree(byte* data, int actual_size) {
   hnode *left, *right, *merge;
   heap* h = create_build_min_heap(data, actual_size);    // builds a min-heap of given capacity
@@ -123,72 +278,10 @@ hnode* build_huff_tree(byte* data, int actual_size) {
     merge->left=left;
     merge->right=right;
 
-    insert_node(h, merge);
+    heap_insert(h, merge);
   }
 
   return get_min(h);    // after the loop, the tree is built and the root is the min element
-}
-
-
-
-/* #################################################################################################### */
-/* ########################################  HELPER FUNCTIONS  ######################################## */
-/* #################################################################################################### */
-
-static hnode* get_min(heap* h) {
-  hnode* temp = h->arr[0];
-  h->arr[0] = h->arr[(h->size--) - 1];
-  min_heapify(h, 0);
-
-  return temp;
-}
-
-static short is_leaf(hnode* n) {
-  return ((n->left==NULL) && (n->right==NULL));
-}
-
-static byte get_size(byte* buf) {
-  int i;    // for-loop index
-  byte size=0;    // holds the number of elements with non-zero frequency
-
-  for(i=0; i<MAX_UCHAR; i++) {
-    if(buf[i]!=0) size++;   // for every element present, increase size by 1
-  }
-
-  return size;    // returns the size of the non-null part of the array
-}
-
-static void print_arr(int v[], int n) {
-  int i;
-  for(i=0; i<n; i++) {
-    printf("%d", v[i]);
-  }
-  printf("\n");
-}
-
-static void print_arr_c(byte* v, int size) {
-  int i;
-  for(i=0; i<size; i++) {
-    printf("%d", v[i]);
-  }
-
-  return;
-}
-
-static void print_codes(hnode* r, int* v, int m) {
-  if(r->left) {
-    v[m]=0;
-    print_codes(r->left, v, m+1);
-  }
-  if(r->right) {
-    v[m]=1;
-    print_codes(r->right, v, m+1);
-  }
-
-  if(is_leaf(r)) {
-    printf("%d: ", r->data);
-    print_arr(v, m);
-  }
 }
 
 
@@ -198,9 +291,38 @@ static void print_codes(hnode* r, int* v, int m) {
 /* #################################################################################################### */
 
 int main() {
-  byte fl[] = {1, 4, 5, 5, 2, 9, 21, 15, 18, 33, 74, 1, 2, 2, 15, 18, 25, 27, 30, 40};
-  
-  compress(fl, sizeof(fl));
+  int err;
+  int i;
+  int fd;
+  int size;
+  struct stat* info=(struct stat*)malloc(sizeof(struct stat));
+
+  if((fd=open("prova.txt", O_RDONLY))==-1) {
+    perror("Opening prova.txt: ");
+    exit(EXIT_FAILURE);
+  }
+
+  if((fstat(fd, info))==-1) {
+    perror("Getting prova.txt info: ");
+    exit(EXIT_FAILURE);
+  }
+
+  size = info->st_size;
+
+  byte* buf=(byte*)malloc(size*sizeof(byte));
+
+
+  for(i=0; i<size; i++) {
+    err=read(fd, (buf+i), 1);
+    // printf("bytes read in cycle %d: %d\n", i, err);
+  }
+
+  compress(buf, size);
+
+  if((close(fd))==-1) {
+    perror("Closing prova.txt: ");
+    exit(EXIT_FAILURE);
+  }
 
   return 0;
 }

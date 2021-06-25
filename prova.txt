@@ -1,0 +1,2 @@
+4
+questo testo sarà utilizzato come prova per lo script di compressione
