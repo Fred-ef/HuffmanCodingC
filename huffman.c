@@ -31,10 +31,10 @@ static byte get_size(byte* buf) {
   return size;    // returns the size of the non-null part of the array
 }
 
-static unsigned int get_compressed_size(abr_node* root) {
+static unsigned int get_compressed_size_bit(abr_node* root) {
   if(root==NULL) return 0;
 
-  return (get_compressed_size(root->left) + ((root->frequency)*(strlen(root->encoding))) + get_compressed_size(root->right));
+  return (get_compressed_size_bit(root->left) + ((root->frequency)*(strlen(root->encoding))) + get_compressed_size_bit(root->right));
 }
 
 
@@ -72,14 +72,6 @@ static void print_codes(hnode* r, int* v, int m) {
     print_arr(v, m);
   }
 }
-
-
-static void htree_search(hnode* r, byte val) {
-  
-
-  return NULL;
-}
-
 
 
 
@@ -218,24 +210,6 @@ void compress(byte* buf, int size) {
 }
 
 
-byte* encode(byte* original_data, int size, hnode* tree) {
-  int i;    // for-loop index
-  unsigned int compressed_size;    // will hold the size of the compressed data in bytes
-  byte byte_counter;    // used to count the number of bits encoded
-  byte* compressed_data;   // will hold the compressed version of the data
-  abr_node* abr_root=NULL;
-  char codes[MAX_UCHAR];
-
-  build_encoding_tree(tree, abr_root, codes, 0);
-  compressed_size=get_compressed_size(abr_root);
-  compressed_data=(byte*)malloc(compressed_size*sizeof(byte));
-
-  for(i=0; i<size; i++) {
-
-  }
-}
-
-
 static void build_encoding_tree(hnode* r, abr_node* root, char* v, int acc) {
   if(r->left) {
     v[acc]='0';
@@ -250,6 +224,49 @@ static void build_encoding_tree(hnode* r, abr_node* root, char* v, int acc) {
     v[acc]='\0';    // inserts the string terminator
     abr_insert(root, r->data, r->frequency, v);   // puts the data and its encoding in the abr
   }
+}
+
+
+byte* encode(byte* original_data, int size, hnode* tree) {
+  int i, j, k=0;    // for-loop indexes
+  byte byte_counter=0;    // used to count the number of bits encoded
+  byte current_byte=0;    // serves as an 8-bit buffer to write data into the compressed file
+  byte remaining_bits=0;    // will hold the number of remaining bits (padding) at the end of the compression
+  char* bit_pointer;    // will hold the temporary codified bit to read
+  byte bit_pointer_size=0;    // will hold the size (in bit) of the temporary codified bit to read
+
+  unsigned int compressed_size;    // will hold the size of the compressed data in bytes
+  byte* compressed_data;   // will hold the compressed version of the data
+  abr_node* abr_root=NULL;
+  char* codes=(char*)malloc(MAX_UCHAR*sizeof(char));
+
+  build_encoding_tree(tree, abr_root, codes, 0);
+  compressed_size=get_compressed_size_bit(abr_root);
+  compressed_data=(byte*)malloc((ceil(compressed_size/BYTE_LEN))*sizeof(byte));
+
+  for(i=0; i<size; i++) {
+    bit_pointer=(abr_search(abr_root, original_data[i]));
+    bit_pointer_size=strlen(bit_pointer);
+
+    for(j=0; j<bit_pointer_size; j++) {
+      if(byte_counter==BYTE_LEN) {
+        compressed_data[k++]=current_byte;
+        current_byte=0;
+        byte_counter=0;
+      }
+      current_byte << 1 | bit_pointer[j];   // ATOI
+      byte_counter++;
+    }
+
+    if(i==(size-1 && byte_counter)) {   // implementation of the end-file padding
+      for(j=0; j<(BYTE_LEN - (compressed_size%BYTE_LEN)); j++) {    // iterates until the last byte is padded (0-filled)
+        current_byte << 1 | 0;
+      }
+      compressed_data[k]=current_byte;
+    }
+  }
+
+  return compressed_data;   // returns the file, completely compressed and zero-padded
 }
 
 

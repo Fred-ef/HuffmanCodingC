@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
+#include <math.h>
 
 #define MAX_UCHAR 256   // defines the maximum value for the byte (unsigned char) data type
 #define BYTE_LEN 8    // defines the size (in bits) of a byte variable (8 bits)
