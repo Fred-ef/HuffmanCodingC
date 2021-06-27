@@ -6,6 +6,8 @@
 /* ########################################  HELPER FUNCTIONS  ######################################## */
 /* #################################################################################################### */
 
+static byte max_code_length=0;    // will be used to store the maximum number of bits to encode a single element 
+
 static hnode* get_min(heap* h) {
   hnode* temp = h->arr[0];
   h->arr[0] = h->arr[(h->size--) - 1];
@@ -170,7 +172,9 @@ abr_node* abr_insert(abr_node* root, byte data, unsigned int frequency, char* en
     abr_node* newnode=(abr_node*)malloc(sizeof(abr_node));
     newnode->data=data;
     newnode->frequency=frequency;
-    newnode->encoding=encoding;
+    newnode->encoding=(char*)malloc((strlen(encoding))*sizeof(char));
+    strcpy(newnode->encoding, encoding);
+    // printf("ABR - data: %c\t encoding: %s\n", newnode->data, newnode->encoding);    // TODO REMOVE
     newnode->left=newnode->right=NULL;
     return newnode;
   }
@@ -210,7 +214,7 @@ void compress(byte* buf, int size) {
 }
 
 
-static void build_encoding_tree(hnode* r, abr_node* root, char* v, int acc) {
+static void build_encoding_tree(hnode* r, abr_node** root, char* v, int acc) {
   if(r->left) {
     v[acc]='0';
     build_encoding_tree(r->left, root, v, acc+1);
@@ -222,7 +226,8 @@ static void build_encoding_tree(hnode* r, abr_node* root, char* v, int acc) {
 
   if(is_leaf(r)) {
     v[acc]='\0';    // inserts the string terminator
-    abr_insert(root, r->data, r->frequency, v);   // puts the data and its encoding in the abr
+    if(acc>max_code_length) max_code_length=acc;    // updates the max num of bits used for a single element encoding
+    (*root) = abr_insert((*root), r->data, r->frequency, v);   // puts the data and its encoding in the abr
   }
 }
 
@@ -234,19 +239,23 @@ byte* encode(byte* original_data, int size, hnode* tree) {
   byte remaining_bits=0;    // will hold the number of remaining bits (padding) at the end of the compression
   char* bit_pointer;    // will hold the temporary codified bit to read
   byte bit_pointer_size=0;    // will hold the size (in bit) of the temporary codified bit to read
-
-  unsigned int compressed_size;    // will hold the size of the compressed data in bytes
+  
+  unsigned long int compressed_size_bit;    // will hold the size of the compressed data in bytes
   byte* compressed_data;   // will hold the compressed version of the data
   abr_node* abr_root=NULL;
   char* codes=(char*)malloc(MAX_UCHAR*sizeof(char));
 
-  build_encoding_tree(tree, abr_root, codes, 0);
-  compressed_size=get_compressed_size_bit(abr_root);
-  compressed_data=(byte*)malloc((ceil(compressed_size/BYTE_LEN))*sizeof(byte));
+  build_encoding_tree(tree, &abr_root, codes, 0);
+  compressed_size_bit=get_compressed_size_bit(abr_root);
+  printf("comp data: %d\t comp data/byte: %d\n", compressed_size_bit, (int)ceil(compressed_size_bit/BYTE_LEN));
+  compressed_data=(byte*)malloc((ceil(compressed_size_bit/BYTE_LEN))*sizeof(byte));
+  bit_pointer=(char*)malloc(max_code_length*sizeof(char));
 
+  
   for(i=0; i<size; i++) {
-    bit_pointer=(abr_search(abr_root, original_data[i]));
+    strcpy(bit_pointer, abr_search(abr_root, original_data[i]));
     bit_pointer_size=strlen(bit_pointer);
+    printf("%s", bit_pointer);
 
     for(j=0; j<bit_pointer_size; j++) {
       if(byte_counter==BYTE_LEN) {
@@ -254,17 +263,20 @@ byte* encode(byte* original_data, int size, hnode* tree) {
         current_byte=0;
         byte_counter=0;
       }
-      current_byte << 1 | bit_pointer[j];   // ATOI
+      current_byte = (current_byte << 1) | (int)(bit_pointer[j] - '0');
       byte_counter++;
     }
 
-    if(i==(size-1 && byte_counter)) {   // implementation of the end-file padding
-      for(j=0; j<(BYTE_LEN - (compressed_size%BYTE_LEN)); j++) {    // iterates until the last byte is padded (0-filled)
-        current_byte << 1 | 0;
+    if((i==size-1) && byte_counter) {   // implementation of the end-file padding
+      for(j=0; j<(BYTE_LEN - (compressed_size_bit%BYTE_LEN)); j++) {    // iterates until the last byte is padded (0-filled)
+        current_byte = (current_byte << 1) | 0;
+        printf("Pad n %d\n", j+1);    // TODO REMOVE
       }
       compressed_data[k]=current_byte;
     }
   }
+
+  for(i=0; i<=(compressed_size_bit/BYTE_LEN); i++) printf("Byte %d: %d\n", i, compressed_data[i]);
 
   return compressed_data;   // returns the file, completely compressed and zero-padded
 }
@@ -325,6 +337,7 @@ int main() {
   }
 
   size = info->st_size;
+  printf("Dimensione file originale: %d\n", size);
 
   byte* buf=(byte*)malloc(size*sizeof(byte));
 
