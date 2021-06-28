@@ -8,7 +8,7 @@
 
 static byte max_code_length=0;    // will be used to store the maximum number of bits to encode a single element 
 
-static hnode* get_min(heap* h) {
+static hnode* heap_get_min(heap* h) {
   hnode* temp = h->arr[0];
   h->arr[0] = h->arr[(h->size--) - 1];
   min_heapify(h, 0);
@@ -22,7 +22,7 @@ static short is_leaf(hnode* n) {
 }
 
 
-static byte get_size(byte* buf) {
+static byte get_diff_elems_num(byte* buf) {
   int i;    // for-loop index
   byte size=0;    // holds the number of elements with non-zero frequency
 
@@ -76,13 +76,21 @@ static void print_codes(hnode* r, int* v, int m) {
 }
 
 
+static int int_div_ceil(int a, int b) {
+  double c = ((double)a)/((double)b);
+  int d = c;
+
+  return (d<c ? (d+1) : d);
+}
+
+
 
 /* #################################################################################################### */
 /* ###################################### HEAP RELATED FUNCTIONS ###################################### */
 /* #################################################################################################### */
 
 // creates a heap-node from given arguments, allocating its memory
-hnode* create_node(byte data, int frequency) {
+hnode* heap_create_node(byte data, int frequency) {
   hnode* node = (hnode*)malloc(sizeof(hnode));    // generating the node
 
   node->data = data;    // store the data in its field as an ASCII character
@@ -94,7 +102,7 @@ hnode* create_node(byte data, int frequency) {
 
 
 // creates a heap-tree of a given capacity, allocating its memory
-heap* create_heap(int cap) {
+heap* heap_create_heap(int cap) {
   heap* h = (heap*)malloc(sizeof(heap));   // generating the tree
 
   h->size=0;   // the heap initially has no nodes
@@ -105,29 +113,21 @@ heap* create_heap(int cap) {
 }
 
 
-heap* create_build_min_heap(byte* data, int actual_size) {
+heap* heap_build_min_heap(byte* data, int actual_size) {
   int i, j;    // for-loop indexes
-  heap* h = create_heap(actual_size);   // creates a min-heap of capacity=cap
+  heap* h = heap_create_heap(actual_size);   // creates a min-heap of capacity=cap
 
   for(i=0, j=0; i<MAX_UCHAR && j<actual_size; i++) {
     if(data[i]!=0) {    // if the element's frequency is not null...
-      h->arr[j] = create_node(i, data[i]);    // ...creates a node out of it and inserts it in the heap
+      h->arr[j] = heap_create_node(i, data[i]);    // ...creates a node out of it and inserts it in the heap
       j++;
     }
   }
 
   h->size = actual_size;   // updating the tree's size
-  build_min_heap(h);    // building a min-heap out of the tree
+  for(i=((h->size-1)-1)/2; i>=0; i--) min_heapify(h, i);
 
   return h;   // returns the min-heap constructed
-}
-
-
-void build_min_heap(heap* h) {
-  int i;    // for-loop index
-  int d = h->size-1;
-
-  for(i=(d-1)/2; i>=0; i--) min_heapify(h, i);
 }
 
 
@@ -199,16 +199,16 @@ char* abr_search(abr_node* root, byte data) {
 /* ###################################### COMPRESSION FUNCTIONS ####################################### */
 /* #################################################################################################### */
 
-void compress(byte* buf, int size) {
+void huff_compress(byte* buf, int size) {
 
-  byte* data=process_data(buf, size);    // constructs an array out of buffer values' frequencies
-  byte num_different_elements=get_size(data);   // gets the number of different elements in the array
+  byte* data=get_value_frequency(buf, size);    // constructs an array out of buffer values' frequencies
+  byte num_different_elements=get_diff_elems_num(data);   // gets the number of different elements in the array
   hnode* root=build_huff_tree(data, num_different_elements);    // builds a huffman tree out of the data extracted
 
   int v[256], m=0;
   print_codes(root, v, m);
 
-  encode(buf, size, root);
+  huff_encode(buf, size, root);
 
   return;
 }
@@ -232,7 +232,7 @@ static void build_encoding_tree(hnode* r, abr_node** root, char* v, int acc) {
 }
 
 
-byte* encode(byte* original_data, int size, hnode* tree) {
+byte* huff_encode(byte* original_data, int size, hnode* tree) {
   int i, j, k=0;    // for-loop indexes
   byte byte_counter=0;    // used to count the number of bits encoded
   byte current_byte=0;    // serves as an 8-bit buffer to write data into the compressed file
@@ -240,16 +240,18 @@ byte* encode(byte* original_data, int size, hnode* tree) {
   char* bit_pointer;    // will hold the temporary codified bit to read
   byte bit_pointer_size=0;    // will hold the size (in bit) of the temporary codified bit to read
   
-  unsigned long int compressed_size_bit;    // will hold the size of the compressed data in bytes
+  unsigned long int compressed_size_bit;    // will hold the size of the compressed data in bits
+  unsigned int compressed_size_byte;    // will hold the size of the compressed data in bytes
   byte* compressed_data;   // will hold the compressed version of the data
   abr_node* abr_root=NULL;
   char* codes=(char*)malloc(MAX_UCHAR*sizeof(char));
 
   build_encoding_tree(tree, &abr_root, codes, 0);
   compressed_size_bit=get_compressed_size_bit(abr_root);
-  printf("comp data: %d\t comp data/byte: %d\n", compressed_size_bit, (int)ceil(compressed_size_bit/BYTE_LEN));
-  compressed_data=(byte*)malloc((ceil(compressed_size_bit/BYTE_LEN))*sizeof(byte));
-  bit_pointer=(char*)malloc(max_code_length*sizeof(char));
+  compressed_size_byte = int_div_ceil((int)compressed_size_bit, (int)BYTE_LEN);
+  printf("comp data: %d bits,\t %d bytes\n", compressed_size_bit, compressed_size_byte);
+  compressed_data=(byte*)malloc(compressed_size_byte * sizeof(byte));
+  bit_pointer=(char*)malloc(max_code_length*sizeof(char)); 
 
   
   for(i=0; i<size; i++) {
@@ -276,13 +278,13 @@ byte* encode(byte* original_data, int size, hnode* tree) {
     }
   }
 
-  for(i=0; i<=(compressed_size_bit/BYTE_LEN); i++) printf("Byte %d: %d\n", i, compressed_data[i]);
+  for(i=0; i<compressed_size_byte; i++) printf("Byte %d: %d\n", i, compressed_data[i]);
 
   return compressed_data;   // returns the file, completely compressed and zero-padded
 }
 
 
-byte* process_data(byte* buf, int size) {
+static byte* get_value_frequency(byte* buf, int size) {
   int i;    // for-loop index
   byte* freq = (byte*)malloc(MAX_UCHAR*sizeof(byte));    // allocates a byte array with a cell for each possible byte value
   memset(freq, 0, MAX_UCHAR);   // initializing every element of the array to 0
@@ -297,20 +299,32 @@ byte* process_data(byte* buf, int size) {
 
 hnode* build_huff_tree(byte* data, int actual_size) {
   hnode *left, *right, *merge;
-  heap* h = create_build_min_heap(data, actual_size);    // builds a min-heap of given capacity
+  heap* h = heap_build_min_heap(data, actual_size);    // builds a min-heap of given capacity
 
   while(!(h->size == 1)) {    // iterates untill the heap has a single element
-    left=get_min(h);    // extracts the less frequent element from the tree
-    right=get_min(h);   // extracts the second less frequent element from the tree
+    left=heap_get_min(h);    // extracts the less frequent element from the tree
+    right=heap_get_min(h);   // extracts the second less frequent element from the tree
 
-    merge=create_node(0, left->frequency + right->frequency);    // as non-leaf nodes aren't associated with data, convention will be 0
+    merge=heap_create_node(0, left->frequency + right->frequency);    // as non-leaf nodes aren't associated with data, convention will be 0
     merge->left=left;
     merge->right=right;
 
     heap_insert(h, merge);
   }
 
-  return get_min(h);    // after the loop, the tree is built and the root is the min element
+  return heap_get_min(h);    // after the loop, the tree is built and the root is the min element
+}
+
+
+
+/* #################################################################################################### */
+/* ###################################### DECOMPRESSION FUNCTION ###################################### */
+/* #################################################################################################### */
+
+byte* decompress(void) {
+
+
+  return NULL;
 }
 
 
@@ -347,7 +361,7 @@ int main() {
     // printf("bytes read in cycle %d: %d\n", i, err);
   }
 
-  compress(buf, size);
+  huff_compress(buf, size);
 
   if((close(fd))==-1) {
     perror("Closing prova.txt: ");

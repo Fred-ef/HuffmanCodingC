@@ -47,12 +47,11 @@ typedef struct h_abr_node {
 
 /* HEAP-RELATED FUNCTIONS */
 
-hnode* create_node(byte, int);
-heap* create_heap(int);
+hnode* heap_create_node(byte, int);
+heap* heap_create_heap(int);
 void min_heapify(heap*, int);
 void heap_insert(heap*, hnode*);
-void build_min_heap(heap*);
-heap* create_build_min_heap(byte*, int);
+heap* heap_build_min_heap(byte*, int);
 
 
 
@@ -65,9 +64,8 @@ char* abr_search(abr_node*, byte);
 
 /* COMPRESSION-RELATED FUNCTIONS */
 
-void compress(byte*, int);
-byte* encode(byte*, int, hnode*);
+void huff_compress(byte*, int);
+byte* huff_encode(byte*, int, hnode*);
 hnode* build_huff_tree(byte*, int);
-byte* process_data(byte*, int);
 
 #endif // huffman_h
