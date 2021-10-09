@@ -6,8 +6,6 @@
 /* ########################################  HELPER FUNCTIONS  ######################################## */
 /* #################################################################################################### */
 
-static byte max_code_length=0;    // will be used to store the maximum number of bits to encode a single element 
-
 static hnode* heap_get_min(heap* h) {
   hnode* temp = h->arr[0];
   h->arr[0] = h->arr[(h->size--) - 1];
@@ -32,6 +30,7 @@ static byte get_diff_elems_num(byte* buf) {
 
   return size;    // returns the size of the non-null part of the array
 }
+
 
 static unsigned int get_compressed_size_bit(abr_node* root) {
   if(root==NULL) return 0;
@@ -199,59 +198,75 @@ char* abr_search(abr_node* root, byte data) {
 /* ###################################### COMPRESSION FUNCTIONS ####################################### */
 /* #################################################################################################### */
 
-void huff_compress(byte* buf, int size) {
+static byte* get_value_frequency(byte* buf, int size) {
+  int i;    // for-loop index
+  byte* freq = (byte*)malloc(MAX_UCHAR*sizeof(byte));    // allocates a byte array with a cell for each possible byte value
+  memset(freq, 0, MAX_UCHAR);   // initializing every element of the array to 0
+
+  for(i=0; i<size; i++) {
+    freq[buf[i]]++;
+  }
+
+  return freq;    // returns the constructed array, ready to be encoded
+}
+
+
+huff_comp_file* huff_compress(byte* buf, int size) {
 
   byte* data=get_value_frequency(buf, size);    // constructs an array out of buffer values' frequencies
   byte num_different_elements=get_diff_elems_num(data);   // gets the number of different elements in the array
   hnode* root=build_huff_tree(data, num_different_elements);    // builds a huffman tree out of the data extracted
 
-  int v[256], m=0;
+  int v[MAX_UCHAR], m=0;
   print_codes(root, v, m);
 
-  huff_encode(buf, size, root);
-
-  return;
+  return huff_encode(buf, size, root);
 }
 
 
-static void build_encoding_tree(hnode* r, abr_node** root, char* v, int acc) {
+static void build_encoding_tree(hnode* r, abr_node** root, char* v, int acc, byte* max_code_length) {
   if(r->left) {
     v[acc]='0';
-    build_encoding_tree(r->left, root, v, acc+1);
+    build_encoding_tree(r->left, root, v, acc+1, max_code_length);
   }
   if(r->right) {
     v[acc]='1';
-    build_encoding_tree(r->right, root, v, acc+1);
+    build_encoding_tree(r->right, root, v, acc+1, max_code_length);
   }
 
   if(is_leaf(r)) {
     v[acc]='\0';    // inserts the string terminator
-    if(acc>max_code_length) max_code_length=acc;    // updates the max num of bits used for a single element encoding
+    if(acc>(*max_code_length)) (*max_code_length)=acc;    // updates the max num of bits used for a single element encoding
     (*root) = abr_insert((*root), r->data, r->frequency, v);   // puts the data and its encoding in the abr
   }
 }
 
 
-byte* huff_encode(byte* original_data, int size, hnode* tree) {
+huff_comp_file* huff_encode(byte* original_data, int size, hnode* tree) {
   int i, j, k=0;    // for-loop indexes
   byte byte_counter=0;    // used to count the number of bits encoded
   byte current_byte=0;    // serves as an 8-bit buffer to write data into the compressed file
   byte remaining_bits=0;    // will hold the number of remaining bits (padding) at the end of the compression
-  char* bit_pointer;    // will hold the temporary codified bit to read
-  byte bit_pointer_size=0;    // will hold the size (in bit) of the temporary codified bit to read
+  char* bit_pointer=NULL;    // will hold the temporary codified bit to read
+  byte bit_pointer_size=0;    // will hold the size (in bit) of the temporary codified bits to read
+  byte max_code_length=0;    // will be used to store the maximum number of bits to encode a single element 
   
   unsigned long int compressed_size_bit;    // will hold the size of the compressed data in bits
   unsigned int compressed_size_byte;    // will hold the size of the compressed data in bytes
-  byte* compressed_data;   // will hold the compressed version of the data
-  abr_node* abr_root=NULL;
-  char* codes=(char*)malloc(MAX_UCHAR*sizeof(char));
+  byte* compressed_data=NULL;   // will hold the compressed version of the data
 
-  build_encoding_tree(tree, &abr_root, codes, 0);
-  compressed_size_bit=get_compressed_size_bit(abr_root);
-  compressed_size_byte = int_div_ceil((int)compressed_size_bit, (int)BYTE_LEN);
-  printf("comp data: %d bits,\t %d bytes\n", compressed_size_bit, compressed_size_byte);
+  // will hold the whole structure of the compressed file
+  huff_comp_file* compressed_file=(huff_comp_file*)malloc(sizeof(huff_comp_file));
+
+  abr_node* abr_root=NULL;    // ABR used to search encoding by character
+  char* codes=(char*)malloc(MAX_UCHAR*sizeof(char));    // used to store code values
+
+  build_encoding_tree(tree, &abr_root, codes, 0, &max_code_length);   // builds the ABR used for encoding
+  compressed_size_bit=get_compressed_size_bit(abr_root);    // size(bit) of all elements combined
+  compressed_size_byte = int_div_ceil((int)compressed_size_bit, (int)BYTE_LEN);   // size(byte)
+  printf("comp data: %lu bits,\t %u bytes\n", compressed_size_bit, compressed_size_byte);    // TODO remove
   compressed_data=(byte*)malloc(compressed_size_byte * sizeof(byte));
-  bit_pointer=(char*)malloc(max_code_length*sizeof(char)); 
+  bit_pointer=(char*)malloc(max_code_length*sizeof(char));
 
   
   for(i=0; i<size; i++) {
@@ -280,20 +295,12 @@ byte* huff_encode(byte* original_data, int size, hnode* tree) {
 
   for(i=0; i<compressed_size_byte; i++) printf("Byte %d: %d\n", i, compressed_data[i]);
 
-  return compressed_data;   // returns the file, completely compressed and zero-padded
-}
+  compressed_file->encoded_data=compressed_data;
+  compressed_file->htree=tree;
+  compressed_file->bit_size=compressed_size_bit;
+  compressed_file->original_byte_size=size;
 
-
-static byte* get_value_frequency(byte* buf, int size) {
-  int i;    // for-loop index
-  byte* freq = (byte*)malloc(MAX_UCHAR*sizeof(byte));    // allocates a byte array with a cell for each possible byte value
-  memset(freq, 0, MAX_UCHAR);   // initializing every element of the array to 0
-
-  for(i=0; i<size; i++) {
-    freq[buf[i]]++;
-  }
-
-  return freq;    // returns the constructed array, ready to be encoded
+  return compressed_file;   // returns the file, completely compressed and zero-padded
 }
 
 
@@ -318,13 +325,80 @@ hnode* build_huff_tree(byte* data, int actual_size) {
 
 
 /* #################################################################################################### */
-/* ###################################### DECOMPRESSION FUNCTION ###################################### */
+/* ###################################### DECOMPRESSION FUNCTIONS ##################################### */
 /* #################################################################################################### */
 
-byte* decompress(void) {
+static void copy_byte(const byte src, byte* dest, byte* position) {
+  int i;    // for-loop index
+  byte* temp=(byte*)malloc(BYTE_LEN*sizeof(byte));
+  byte mod, div=src;    // used to convert value to binary
+  memset(temp, 0, BYTE_LEN);    // setting all array's values to 0
+
+  for(i=BYTE_LEN-1; i>=0 && div>0; i--) {
+    temp[i]=div%2;
+    div=(int)(div/2);
+  }
+
+  for(i=0; i<BYTE_LEN; i++, (*position)++) {
+    dest[*position]=temp[i];
+  }
+
+  free(temp);
+}
 
 
-  return NULL;
+// returns the value of the next series of bits codified in the huffman tree and advances bit position
+static byte get_value_from_code(const byte* buf_src, byte* position, hnode* root) {
+  hnode* aux1=NULL;   // auxiliary pointer for traversing the huffman tree
+  hnode* aux2=NULL;   // auxiliary pointer for traversing the huffman tree
+  byte result=0;    // will hold the final result
+  for(aux1=aux2=root; (aux1); (*position)++) {
+    aux2=aux1;
+    if(buf_src[(*position)]==0) aux1=aux1->left;
+    else aux1=aux1->right;
+    printf("Bit_position: %d\n", (*position));
+  }
+
+  printf("Value: %c\n", aux2->data);
+
+  return (aux2->data);    // last non-null node contains the data associated with the path
+}
+
+
+byte* huff_decompress(huff_comp_file* comp_file) {
+  int i;    // for loop index
+  byte* comp_data=comp_file->encoded_data;    // retrieving compressed data
+  hnode* huff_tree=comp_file->htree;    // retrieving huffman tree
+  unsigned long comp_bit_size=comp_file->bit_size;    // retrieving size in bits
+  unsigned int comp_byte_size=int_div_ceil((int)comp_bit_size, (int)BYTE_LEN);   // retrieving size in bytes
+  unsigned int uncomp_byte_size=comp_file->original_byte_size;    // retrieving uncompressed size in bytes
+
+  printf("comp bit size: %lu \t comp_byte_size: %u\t uncomp_byte_size: %u\n", comp_bit_size, comp_byte_size, uncomp_byte_size);
+
+  byte* uncomp_data=(byte*)malloc(uncomp_byte_size*sizeof(byte));    // allocating space for the file
+  byte* buffer_bit=(byte*)malloc(MAX_UCHAR*sizeof(byte));    // acts as a buffer to write bytes into the final file
+  byte buffer_bit_start=0;    // keeps track of the current position in the buffer
+  byte buffer_bit_end=0;   // keeps track of the last copied bit in the buffer
+  byte padding=BYTE_LEN - (comp_bit_size%BYTE_LEN);   // number of 0-padding-bits to pad the last compressed byte (NOT TO DECOMPRESS)
+  unsigned int comp_byte_pointer=0;    // keeps track of the number of bytes compressed
+  unsigned int uncomp_byte_pointer=0;   // keeps track of the number of bytes written to final file
+
+  // fill the first 256bytes (if the compressed file is large enough)
+  while((comp_byte_pointer<(MAX_UCHAR/BYTE_LEN)) && (comp_byte_pointer<comp_byte_size)) {
+    copy_byte(comp_data[comp_byte_pointer], buffer_bit, &buffer_bit_end);
+    comp_byte_pointer++;
+  }
+
+  // get bits from the buffer, de-code them, write them to the output file and re-fill the buffer
+  while((uncomp_byte_pointer<=uncomp_byte_size) && (comp_byte_pointer<=comp_byte_size)) {   // repeat until the output file has been built
+    uncomp_data[uncomp_byte_pointer++]=get_value_from_code(buffer_bit, &buffer_bit_start, huff_tree);
+    while((buffer_bit_start-buffer_bit_end)%MAX_UCHAR>8) {
+      copy_byte(comp_data[comp_byte_pointer], buffer_bit, &buffer_bit_end);
+      comp_byte_pointer++;
+    }
+  }
+
+  return uncomp_data;
 }
 
 
@@ -336,6 +410,7 @@ byte* decompress(void) {
 int main() {
   int err;
   int i;
+  int j;
   int fd;
   int size;
   struct stat* info=(struct stat*)malloc(sizeof(struct stat));
@@ -354,6 +429,7 @@ int main() {
   printf("Dimensione file originale: %d\n", size);
 
   byte* buf=(byte*)malloc(size*sizeof(byte));
+  huff_comp_file* compressed_file=NULL;
 
 
   for(i=0; i<size; i++) {
@@ -361,7 +437,17 @@ int main() {
     // printf("bytes read in cycle %d: %d\n", i, err);
   }
 
-  huff_compress(buf, size);
+  compressed_file=huff_compress(buf, size);
+
+  byte* uncomp_file=huff_decompress(compressed_file);
+
+  printf("De-compressed file size: %lu\n", sizeof(uncomp_file));
+
+  for(j=0; j<size; j++) {
+    printf("%c\n", (uncomp_file[j]));
+  }
+
+  printf("Closing file...\n");
 
   if((close(fd))==-1) {
     perror("Closing prova.txt: ");
