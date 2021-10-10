@@ -352,11 +352,12 @@ static byte get_value_from_code(const byte* buf_src, byte* position, hnode* root
   hnode* aux1=NULL;   // auxiliary pointer for traversing the huffman tree
   hnode* aux2=NULL;   // auxiliary pointer for traversing the huffman tree
   byte result=0;    // will hold the final result
-  for(aux1=aux2=root; (aux1); (*position)++) {
+  for(aux1=aux2=root; (aux1);) {
     aux2=aux1;
     if(buf_src[(*position)]==0) aux1=aux1->left;
     else aux1=aux1->right;
     printf("Bit_position: %d\n", (*position));
+    if(aux1) (*position)++;
   }
 
   printf("Value: %c\n", aux2->data);
@@ -390,12 +391,14 @@ byte* huff_decompress(huff_comp_file* comp_file) {
   }
 
   // get bits from the buffer, de-code them, write them to the output file and re-fill the buffer
-  while((uncomp_byte_pointer<=uncomp_byte_size) && (comp_byte_pointer<=comp_byte_size)) {   // repeat until the output file has been built
+  while((uncomp_byte_pointer<=uncomp_byte_size)) {   // repeat until the output file has been built
     uncomp_data[uncomp_byte_pointer++]=get_value_from_code(buffer_bit, &buffer_bit_start, huff_tree);
-    while((buffer_bit_start-buffer_bit_end)%MAX_UCHAR>8) {
+    while(((buffer_bit_start-buffer_bit_end)%MAX_UCHAR)>8 && (comp_byte_pointer<=comp_byte_size)) {
       copy_byte(comp_data[comp_byte_pointer], buffer_bit, &buffer_bit_end);
       comp_byte_pointer++;
+      printf("\nREFILL!\nBuffer ends at bit: %d\n\n", buffer_bit_end);
     }
+    printf("Comp point: %d\t Comp size: %d\n\n", comp_byte_pointer, comp_byte_size);
   }
 
   return uncomp_data;
