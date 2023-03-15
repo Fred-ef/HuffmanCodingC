@@ -418,13 +418,13 @@ int main() {
   int size;
   struct stat* info=(struct stat*)malloc(sizeof(struct stat));
 
-  if((fd=open("prova.txt", O_RDONLY))==-1) {
-    perror("Opening prova.txt: ");
+  if((fd=open("file1.txt", O_RDONLY))==-1) {
+    perror("Opening file4.txt: ");
     exit(EXIT_FAILURE);
   }
 
   if((fstat(fd, info))==-1) {
-    perror("Getting prova.txt info: ");
+    perror("Getting file4.txt info: ");
     exit(EXIT_FAILURE);
   }
 
@@ -442,18 +442,24 @@ int main() {
 
   compressed_file=huff_compress(buf, size);
 
-  byte* uncomp_file=huff_decompress(compressed_file);
+  byte* decomp_file=huff_decompress(compressed_file);
 
-  printf("De-compressed file size: %lu\n", sizeof(uncomp_file));
+  printf("De-compressed file size: %lu\n", sizeof(decomp_file));
 
-  for(j=0; j<size; j++) {
-    printf("%c\n", (uncomp_file[j]));
+  if((fd=open("decompressed.txt", O_WRONLY | O_CREAT, 0777))==-1) {    // creating file
+      perror("restoring file: ");
+      exit(EXIT_FAILURE);
+  }
+
+  if((err=write(fd, decomp_file, size))==-1) {    // writing file
+      error("writing decompressed file: ");
+      exit(EXIT_FAILURE);
   }
 
   printf("Closing file...\n");
 
   if((close(fd))==-1) {
-    perror("Closing prova.txt: ");
+    perror("Closing file4.txt: ");
     exit(EXIT_FAILURE);
   }
 
